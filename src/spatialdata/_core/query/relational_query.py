@@ -237,10 +237,10 @@ def _get_masked_element(
     mask_values: NDArray[Any] | pd.Index | None = (
         masked_values if len(masked_values := masked_table_instance_key_column.to_numpy()) != 0 else None
     )
-    if match_rows in ["left", "right"]:
+    if match_rows in ["left", "right"] and mask_values is not None:
         left_index, _ = _match_rows(table_instance_key_column, mask, element_indices, match_rows)
 
-        if mask_values is not None and len(left_index) != len(mask_values):
+        if len(left_index) != len(mask_values):
             mask = left_index.isin(mask_values)
             mask_values = left_index[mask]
         else:
@@ -250,7 +250,9 @@ def _get_masked_element(
         mask_values = np.asarray(element_indices)[order_mask]
 
     if isinstance(element, DaskDataFrame):
-        masked: SpatialElement = element.map_partitions(lambda df: df.loc[mask_values], meta=element)
+        masked: SpatialElement = element.map_partitions(
+            lambda df: df.loc[mask_values if mask_values is not None else []], meta=element
+        )
         return masked
     if not isinstance(element, GeoDataFrame):
         raise TypeError(f"Only points and shapes elements can be masked, got {type(element).__name__}.")
@@ -566,10 +568,10 @@ def _match_rows(
     index_right = merged_df["index_right"]
 
     # With labels it can be that index 0 is NaN
-    if isinstance(index_left.iloc[0], float) and math.isnan(index_left.iloc[0]):
+    if len(index_left) and isinstance(index_left.iloc[0], float) and math.isnan(index_left.iloc[0]):
         index_left = index_left.iloc[1:]
 
-    if isinstance(index_right.iloc[0], float) and math.isnan(index_right.iloc[0]):
+    if len(index_right) and isinstance(index_right.iloc[0], float) and math.isnan(index_right.iloc[0]):
         index_right = index_right.iloc[1:]
 
     return pd.Index(index_left), pd.Index(index_right)
